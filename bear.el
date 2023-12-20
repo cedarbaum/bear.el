@@ -9,6 +9,7 @@
   :type 'string
   :group 'bear)
 
+;;;###autoload
 (defun bear-open-note ()
   "Prompt the user to select an option and return the corresponding ID."
   (interactive)

@@ -25,7 +25,7 @@
 
 (defun bear-list-notes ()
   "Return a list of all notes in the database."
-  (sqlite-select (bear--get-db) "SELECT Z_PK,ZTITLE FROM ZSFNOTE"))
+  (sqlite-select (bear--get-db) "SELECT Z_PK,ZTITLE FROM ZSFNOTE WHERE ZTRASHED=0 AND ZARCHIVED=0 AND ZENCRYPTED=0"))
 
 (defun bear--get-note-title (note-pk)
   "Get the title of the note with the given NOTE-PK."

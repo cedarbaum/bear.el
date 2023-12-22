@@ -74,7 +74,7 @@
 Optional argument SECTION specifies a section to jump to."
   (let* ((title (bear--get-note-title note-pk))
          (text (bear--get-note-text note-pk))
-         (file-name (format "%s.md" title))
+         (file-name (format "%s.bearmd" title))
          (full-path (expand-file-name file-name bear-cache-location))
          (buffer (find-file-noselect full-path)))
 
@@ -165,17 +165,6 @@ Returns a cons cell (title . section), where either part may be nil."
       (add-text-properties start end up)
       (add-face-text-property start end 'markdown-url-face))))
 
-(defun bear--is-bear-file ()
-  "Return t if the current buffer is a bear file."
-  (and (string= (file-name-extension buffer-file-name) "md")
-       (string-prefix-p (expand-file-name bear-cache-location)
-                        (expand-file-name default-directory))))
-
-(defun bear--bear-mode-auto-enable ()
-  "Automatically enable bear-mode for .md files in bear-cache-location."
-  (when (bear--is-bear-file)
-    (bear-mode)))
-
 (defvar bear-mode-font-lock-keywords
   (append markdown-mode-font-lock-keywords
           '((bear--fontify-clickable-backlinks . nil))))
@@ -186,7 +175,8 @@ Returns a cons cell (title . section), where either part may be nil."
   (setq font-lock-defaults '(bear-mode-font-lock-keywords))
   (setq buffer-read-only t))
 
-(add-hook 'find-file-hook 'bear--bear-mode-auto-enable)
+;;;###autoload
+(add-to-list 'auto-mode-alist '("\\.bearmd\\'" . bear-mode))
 
 (provide 'bear)
 ;;; bear.el ends here

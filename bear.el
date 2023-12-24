@@ -108,6 +108,12 @@
     (setq bear--db (sqlite-open (bear--get-db-url))))
   bear--db)
 
+(defun bear--reset-db-connection ()
+  "Reset the bear database connection."
+  (when bear--db
+    (sqlite-close bear--db)
+    (setq bear--db nil)))
+
 ;;; Bear SQL functions
 
 (defun bear-list-notes ()

@@ -4,7 +4,7 @@
 
 ;; Author: Samuel Cedarbaum <scedarbaum@gmail.com>
 ;; Version: 0.1
-;; Package-Requires: ((markdown-mode "2.6"))
+;; Package-Requires: ((emacs "29.1") (markdown-mode "2.6"))
 ;; Keywords: bear, notes, markdown
 ;; URL: https://github.com/cedarbaum/bear.el
 

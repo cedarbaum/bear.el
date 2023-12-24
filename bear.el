@@ -123,7 +123,7 @@ Optional argument SECTION specifies a section to jump to."
     (switch-to-buffer buffer)))
 
 (defun bear--parse-title-and-section (str)
-  "Parse out the title and section from STR of format 'title/section'.
+  "Parse out the title and section from STR of format \\='title/section\\='.
 Returns a cons cell (title . section), where either part may be nil."
   (when (string-match "\\(.*?\\)\\(?:/\\(.*?\\)\\)?$" str)
     (let ((title (match-string 1 str))

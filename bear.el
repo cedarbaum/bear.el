@@ -26,6 +26,11 @@
   :type 'function
   :group 'bear)
 
+(defcustom bear-readonly t
+  "Whether to open notes in read-only mode."
+  :type 'boolean
+  :group 'bear)
+
 (defvar-local bear--note-pk nil
   "The primary key of the note in the current buffer.")
 
@@ -40,19 +45,48 @@
     (bear--open-or-reload-note selected-id)))
 
 ;;;###autoload
+(defun bear-pull-note()
+  "Pull the note from Bear."
+  (interactive)
+  (let* ((note-pk bear--note-pk)
+         (title (bear--get-note-title note-pk))
+         (text (bear--get-note-text note-pk)))
+    (save-excursion
+      (let* ((buffer-read-only nil))
+        (erase-buffer)
+        (insert text)
+        (when bear-format-function
+          (funcall bear-format-function)))
+      (message "Pulled note %s" title))))
+
+;;;###autoload
+(defun bear-push-note ()
+  "Push the note to Bear."
+  (interactive)
+  (let* ((note-pk bear--note-pk)
+         (title (bear--get-curent-note-title))
+         (text (buffer-string)))
+    (bear--update-note note-pk title text)
+    (message "Pushed note %s" title)))
+
+;;;###autoload
 (defun bear-create-note ()
   "Create a new note."
   (interactive)
+  (bear--assert-can-write)
   (let* ((title (read-string "Title: ")))
     (let* ((buffer (get-buffer-create (format "*bear-note-%s*" title))))
       (with-current-buffer buffer
+        (bear-mode)
         (save-excursion
-          (bear-mode)
-          (setq buffer-read-only nil)
-          (erase-buffer)
-          (insert "# ")
-          (insert title)
-          (save-buffer)))
+          (let* ((buffer-read-only nil))
+            (erase-buffer)
+            (insert (format "# %s" title))))
+
+        (let* ((note-pk (bear--create-note title (buffer-string))))
+          (setq bear--note-pk note-pk)
+          (message "Created note %s" title)))
+
       (switch-to-buffer buffer))))
 
 (defun bear--get-db-url ()
@@ -87,6 +121,7 @@
 
 (defun bear--create-note (title text)
   "Create a new note with the given TITLE and TEXT."
+  (bear--assert-can-write)
   (let* ((db (bear--get-db))
          (current-time (bear--core-data-timestamp))
          (unique-id (bear--generate-guid)))
@@ -94,6 +129,15 @@
                     "INSERT INTO ZSFNOTE (ZTITLE, ZTEXT, ZARCHIVED, ZENCRYPTED, ZHASFILES, ZHASIMAGES, ZHASSOURCECODE, ZLOCKED, ZORDER, ZPERMANENTLYDELETED, ZPINNED, ZSHOWNINTODAYWIDGET, ZSKIPSYNC, ZTODOCOMPLETED, ZTODOINCOMPLETED, ZTRASHED, ZVERSION, ZUNIQUEIDENTIFIER, ZCREATIONDATE, ZMODIFICATIONDATE) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                     (list title text 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 unique-id current-time current-time))
     (car (car (sqlite-select db "SELECT last_insert_rowid()")))))
+
+(defun bear--update-note (note-pk title text)
+  "Update the note with the given NOTE-PK with the given TITLE and TEXT."
+  (bear--assert-can-write)
+  (let* ((db (bear--get-db))
+         (current-time (bear--core-data-timestamp)))
+    (sqlite-execute db
+                    "UPDATE ZSFNOTE SET ZTITLE=?, ZTEXT=?, ZMODIFICATIONDATE=? WHERE Z_PK=?"
+                    (list title text current-time note-pk))))
 
 (defun bear--open-or-reload-note (note-pk &optional section)
   "Open the note with the given NOTE-PK.
@@ -103,17 +147,16 @@ Optional argument SECTION specifies a section to jump to."
          (buffer (get-buffer-create (format "*bear-note-%s*" title))))
 
     (with-current-buffer buffer
-      ;; Set up the buffer content if the file is new or the note has changed
-      (save-excursion
-        (setq buffer-read-only nil)
-        (erase-buffer)
-        (insert text)
-        (when bear-format-function
-          (funcall bear-format-function))
-        (setq buffer-read-only t))
-
       ;; Switch to bear-mode
       (bear-mode)
+
+      ;; Set up the buffer content if the file is new or the note has changed
+      (save-excursion
+        (let* ((buffer-read-only nil))
+          (erase-buffer)
+          (insert text)
+          (when bear-format-function
+            (funcall bear-format-function))))
 
       ;; Jump to the section if specified
       (when section
@@ -125,6 +168,11 @@ Optional argument SECTION specifies a section to jump to."
     ;; Switch to the buffer in the current window
     (switch-to-buffer buffer)
     (setq bear--note-pk note-pk)))
+
+(defun bear--assert-can-write ()
+  "Assert that the bear mode is allowed to write."
+  (when bear-readonly
+    (error "Bear mode is read-only for safety.  You can disable this, but review the README first")))
 
 (defun bear--core-data-timestamp ()
   "Return the number of seconds since January 1, 2001."
@@ -143,6 +191,18 @@ Optional argument SECTION specifies a section to jump to."
           (random (expt 16 8)) (random (expt 16 4))
           (random (expt 16 4)) (random (expt 16 4))
           (random (expt 16 12))))
+
+(defun bear--get-curent-note-title ()
+  "Return the title of the current buffer."
+  (save-excursion
+    (goto-char (point-min))
+    (let ((title nil))
+      (while (and (null title) (not (eobp)))
+        (when (and (looking-at "^# +\\(.*[^[:space:]].*\\)$")
+                   (not (string-empty-p (match-string 1))))
+          (setq title (substring-no-properties (match-string 1))))
+        (forward-line 1))
+      title)))
 
 (defun bear--parse-title-and-section (str)
   "Parse out the title and section from STR of format \\='title/section\\='.
@@ -212,7 +272,7 @@ Returns a cons cell (title . section), where either part may be nil."
 (define-derived-mode bear-mode markdown-mode "Bear"
   "A mode derived from markdown-mode with read-only buffers."
   (setq font-lock-defaults '(bear-mode-font-lock-keywords))
-  (setq buffer-read-only t))
+  (setq buffer-read-only bear-readonly))
 
 (provide 'bear)
 ;;; bear.el ends here

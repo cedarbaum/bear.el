@@ -1,5 +1,17 @@
 ;;; bear.el --- Interact with Bear notes from Emacs -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2023 Samuel Cedarbaum
+
+;; Author: Samuel Cedarbaum <scedarbaum@gmail.com>
+;; Version: 0.1
+;; Package-Requires: ((markdown-mode "2.6"))
+;; Keywords: bear, notes, markdown
+;; URL: https://github.com/cedarbaum/bear.el
+
 ;;; Commentary:
+
+;; This package provides a major mode for interacting with Bear notes.
+
 ;;; Code:
 
 (require 'markdown-mode)
@@ -170,6 +182,7 @@ Returns a cons cell (title . section), where either part may be nil."
           '((bear--fontify-clickable-backlinks . nil))))
 
 ;; Define bear-mode as a derived mode of markdown-mode
+;;;###autoload
 (define-derived-mode bear-mode markdown-mode "Bear"
   "A mode derived from markdown-mode with read-only buffers."
   (setq font-lock-defaults '(bear-mode-font-lock-keywords))

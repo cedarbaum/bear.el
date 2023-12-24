@@ -26,6 +26,11 @@
   :type 'directory
   :group 'bear)
 
+(defcustom bear-format-function nil
+  "Function to format the bear buffer contents."
+  :type 'function
+  :group 'bear)
+
 ;;;###autoload
 (defun bear-open-note ()
   "Prompt the user to select an option and return the corresponding ID."
@@ -99,9 +104,8 @@ Optional argument SECTION specifies a section to jump to."
         (setq buffer-read-only nil)
         (erase-buffer)
         (insert text)
-        (when (fboundp 'format-all-buffer)
-          (setq format-all-formatters '(("Markdown" prettier)))
-          (format-all-buffer))
+        (when bear-format-function
+          (funcall bear-format-function))
         (setq buffer-read-only t)
         (save-buffer))
 

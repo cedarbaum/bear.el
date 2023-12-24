@@ -34,6 +34,8 @@
 (defvar-local bear--note-pk nil
   "The primary key of the note in the current buffer.")
 
+;;; Interactive functions
+
 ;;;###autoload
 (defun bear-open-note ()
   "Prompt the user to select an option and return the corresponding ID."
@@ -48,6 +50,7 @@
 (defun bear-pull-note()
   "Pull the note from Bear."
   (interactive)
+  (bear--assert-note-pk-exists)
   (let* ((note-pk bear--note-pk)
          (title (bear--get-note-title note-pk))
          (text (bear--get-note-text note-pk)))
@@ -63,6 +66,7 @@
 (defun bear-push-note ()
   "Push the note to Bear."
   (interactive)
+  (bear--assert-note-pk-exists)
   (let* ((note-pk bear--note-pk)
          (title (bear--get-curent-note-title))
          (text (buffer-string)))
@@ -89,6 +93,8 @@
 
       (switch-to-buffer buffer))))
 
+;;; Bear DB configuration
+
 (defun bear--get-db-url ()
   "Get the bear database URL."
   (expand-file-name "database.sqlite" bear-application-data-url))
@@ -101,6 +107,8 @@
   (unless bear--db
     (setq bear--db (sqlite-open (bear--get-db-url))))
   bear--db)
+
+;;; Bear SQL functions
 
 (defun bear-list-notes ()
   "Return a list of all notes in the database."
@@ -119,8 +127,13 @@
          (text (mapconcat 'identity text-lines)))
     text))
 
+(defun bear--note-pk-exists-p (note-pk)
+  "Return t if the note with the given NOTE-PK exists."
+  (let* ((note (sqlite-select (bear--get-db) (format "SELECT Z_PK FROM ZSFNOTE WHERE Z_PK=%s" note-pk))))
+    (not (null note))))
+
 (defun bear--create-note (title text)
-  "Create a new note with the given TITLE and TEXT."
+  "Create a new note with the given TITLE and TEXT.  Return the note's primary key."
   (bear--assert-can-write)
   (let* ((db (bear--get-db))
          (current-time (bear--core-data-timestamp))
@@ -138,6 +151,8 @@
     (sqlite-execute db
                     "UPDATE ZSFNOTE SET ZTITLE=?, ZTEXT=?, ZMODIFICATIONDATE=? WHERE Z_PK=?"
                     (list title text current-time note-pk))))
+
+;;; Bear buffer functions
 
 (defun bear--open-or-reload-note (note-pk &optional section)
   "Open the note with the given NOTE-PK.
@@ -169,29 +184,6 @@ Optional argument SECTION specifies a section to jump to."
     (switch-to-buffer buffer)
     (setq bear--note-pk note-pk)))
 
-(defun bear--assert-can-write ()
-  "Assert that the bear mode is allowed to write."
-  (when bear-readonly
-    (error "Bear mode is read-only for safety.  You can disable this, but review the README first")))
-
-(defun bear--core-data-timestamp ()
-  "Return the number of seconds since January 1, 2001."
-  (let* ((seconds-per-day 86400)
-         (days-in-year 365)
-         (leap-years 8)
-         (non-leap-years 23)
-         (seconds-since-epoch-to-2001 (+ (* leap-years (1+ days-in-year) seconds-per-day)
-                                         (* non-leap-years days-in-year seconds-per-day)))
-         (current-time (float-time)))
-    (- current-time seconds-since-epoch-to-2001)))
-
-(defun bear--generate-guid ()
-  "Generate a GUID string in the format XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX."
-  (format "%08X-%04X-%04X-%04X-%012X"
-          (random (expt 16 8)) (random (expt 16 4))
-          (random (expt 16 4)) (random (expt 16 4))
-          (random (expt 16 12))))
-
 (defun bear--get-curent-note-title ()
   "Return the title of the current buffer."
   (save-excursion
@@ -204,14 +196,8 @@ Optional argument SECTION specifies a section to jump to."
         (forward-line 1))
       title)))
 
-(defun bear--parse-title-and-section (str)
-  "Parse out the title and section from STR of format \\='title/section\\='.
-Returns a cons cell (title . section), where either part may be nil."
-  (when (string-match "\\(.*?\\)\\(?:/\\(.*?\\)\\)?$" str)
-    (let ((title (match-string 1 str))
-          (section (match-string 2 str)))
-      (cons (if (string= title "") nil title)
-            (if (string= section "") nil section)))))
+
+;;; Fontification
 
 (defun bear--make-backlink-click-function (start end)
   "Create a click function for text between START and END."
@@ -266,6 +252,47 @@ Returns a cons cell (title . section), where either part may be nil."
 (defvar bear-mode-font-lock-keywords
   (append markdown-mode-font-lock-keywords
           '((bear--fontify-clickable-backlinks . nil))))
+
+;;; Utility functions
+
+(defun bear--assert-can-write ()
+  "Assert that the bear mode is allowed to write."
+  (when bear-readonly
+    (error "Bear mode is read-only for safety.  You can disable this, but review the README first")))
+
+(defun bear--assert-note-pk-exists ()
+  "Assert that the current buffer has a note-pk."
+  (when (or (null bear--note-pk)
+            (not (bear--note-pk-exists-p bear--note-pk)))
+    (error "No note-pk found for current buffer")))
+
+(defun bear--core-data-timestamp ()
+  "Return the number of seconds since January 1, 2001."
+  (let* ((seconds-per-day 86400)
+         (days-in-year 365)
+         (leap-years 8)
+         (non-leap-years 23)
+         (seconds-since-epoch-to-2001 (+ (* leap-years (1+ days-in-year) seconds-per-day)
+                                         (* non-leap-years days-in-year seconds-per-day)))
+         (current-time (float-time)))
+    (- current-time seconds-since-epoch-to-2001)))
+
+(defun bear--generate-guid ()
+  "Generate a GUID string in the format XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX."
+  (format "%08X-%04X-%04X-%04X-%012X"
+          (random (expt 16 8)) (random (expt 16 4))
+          (random (expt 16 4)) (random (expt 16 4))
+          (random (expt 16 12))))
+
+
+(defun bear--parse-title-and-section (str)
+  "Parse out the title and section from STR of format \\='title/section\\='.
+Returns a cons cell (title . section), where either part may be nil."
+  (when (string-match "\\(.*?\\)\\(?:/\\(.*?\\)\\)?$" str)
+    (let ((title (match-string 1 str))
+          (section (match-string 2 str)))
+      (cons (if (string= title "") nil title)
+            (if (string= section "") nil section)))))
 
 ;; Define bear-mode as a derived mode of markdown-mode
 ;;;###autoload

@@ -21,15 +21,13 @@
   :type 'directory
   :group 'bear)
 
-(defcustom bear-cache-location (expand-file-name ".bear/" user-emacs-directory)
-  "Path to the bear cache location."
-  :type 'directory
-  :group 'bear)
-
 (defcustom bear-format-function nil
   "Function to format the bear buffer contents."
   :type 'function
   :group 'bear)
+
+(defvar-local bear--note-pk nil
+  "The primary key of the note in the current buffer.")
 
 ;;;###autoload
 (defun bear-open-note ()
@@ -41,19 +39,34 @@
          (selected-id (car (rassoc (list selection) notes)))) ; Find the ID associated with the selection
     (bear--open-or-reload-note selected-id)))
 
-(defun bear--ensure-cache-directory-exists ()
-  "Ensure that the bear cache directory exists."
-  (unless (file-exists-p bear-cache-location)
-    (make-directory bear-cache-location t)))
+;;;###autoload
+(defun bear-create-note ()
+  "Create a new note."
+  (interactive)
+  (let* ((title (read-string "Title: ")))
+    (let* ((buffer (get-buffer-create (format "*bear-note-%s*" title))))
+      (with-current-buffer buffer
+        (save-excursion
+          (bear-mode)
+          (setq buffer-read-only nil)
+          (erase-buffer)
+          (insert "# ")
+          (insert title)
+          (save-buffer)))
+      (switch-to-buffer buffer))))
 
 (defun bear--get-db-url ()
   "Get the bear database URL."
   (expand-file-name "database.sqlite" bear-application-data-url))
 
+(defvar bear--db nil
+  "The bear database.")
+
 (defun bear--get-db ()
   "Get the bear database."
-  (let* ((db (sqlite-open (bear--get-db-url))))
-    db))
+  (unless bear--db
+    (setq bear--db (sqlite-open (bear--get-db-url))))
+  bear--db)
 
 (defun bear-list-notes ()
   "Return a list of all notes in the database."
@@ -72,31 +85,22 @@
          (text (mapconcat 'identity text-lines)))
     text))
 
-(defun bear--get-pk-from-title (title)
-  "Get the primary key of the note with the given TITLE."
-  (let* ((note (sqlite-select (bear--get-db) (format "SELECT Z_PK FROM ZSFNOTE WHERE ZTITLE='%s'" title)))
-         (pk (car (nth 0 note))))
-    pk))
-
-(defun bear--get-current-buffer-pk ()
-  "Get the primary key of the current buffer."
-  (let ((title (file-name-sans-extension (file-name-nondirectory buffer-file-name))))
-    (let ((note-pk (bear--get-pk-from-title title)))
-      (if note-pk
-          note-pk
-        (message "No note found for title %s" title)))))
+(defun bear--create-note (title text)
+  "Create a new note with the given TITLE and TEXT."
+  (let* ((db (bear--get-db))
+         (current-time (bear--core-data-timestamp))
+         (unique-id (bear--generate-guid)))
+    (sqlite-execute db
+                    "INSERT INTO ZSFNOTE (ZTITLE, ZTEXT, ZARCHIVED, ZENCRYPTED, ZHASFILES, ZHASIMAGES, ZHASSOURCECODE, ZLOCKED, ZORDER, ZPERMANENTLYDELETED, ZPINNED, ZSHOWNINTODAYWIDGET, ZSKIPSYNC, ZTODOCOMPLETED, ZTODOINCOMPLETED, ZTRASHED, ZVERSION, ZUNIQUEIDENTIFIER, ZCREATIONDATE, ZMODIFICATIONDATE) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                    (list title text 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 unique-id current-time current-time))
+    (car (car (sqlite-select db "SELECT last_insert_rowid()")))))
 
 (defun bear--open-or-reload-note (note-pk &optional section)
   "Open the note with the given NOTE-PK.
 Optional argument SECTION specifies a section to jump to."
   (let* ((title (bear--get-note-title note-pk))
          (text (bear--get-note-text note-pk))
-         (file-name (format "%s.bearmd" title))
-         (full-path (expand-file-name file-name bear-cache-location))
-         (buffer (find-file-noselect full-path)))
-
-    ;; Ensure that the cache directory exists
-    (bear--ensure-cache-directory-exists)
+         (buffer (get-buffer-create (format "*bear-note-%s*" title))))
 
     (with-current-buffer buffer
       ;; Set up the buffer content if the file is new or the note has changed
@@ -106,8 +110,7 @@ Optional argument SECTION specifies a section to jump to."
         (insert text)
         (when bear-format-function
           (funcall bear-format-function))
-        (setq buffer-read-only t)
-        (save-buffer))
+        (setq buffer-read-only t))
 
       ;; Switch to bear-mode
       (bear-mode)
@@ -120,7 +123,26 @@ Optional argument SECTION specifies a section to jump to."
           (message "Section %s not found in note %s" section title))))
 
     ;; Switch to the buffer in the current window
-    (switch-to-buffer buffer)))
+    (switch-to-buffer buffer)
+    (setq bear--note-pk note-pk)))
+
+(defun bear--core-data-timestamp ()
+  "Return the number of seconds since January 1, 2001."
+  (let* ((seconds-per-day 86400)
+         (days-in-year 365)
+         (leap-years 8)
+         (non-leap-years 23)
+         (seconds-since-epoch-to-2001 (+ (* leap-years (1+ days-in-year) seconds-per-day)
+                                         (* non-leap-years days-in-year seconds-per-day)))
+         (current-time (float-time)))
+    (- current-time seconds-since-epoch-to-2001)))
+
+(defun bear--generate-guid ()
+  "Generate a GUID string in the format XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX."
+  (format "%08X-%04X-%04X-%04X-%012X"
+          (random (expt 16 8)) (random (expt 16 4))
+          (random (expt 16 4)) (random (expt 16 4))
+          (random (expt 16 12))))
 
 (defun bear--parse-title-and-section (str)
   "Parse out the title and section from STR of format \\='title/section\\='.
@@ -142,7 +164,7 @@ Returns a cons cell (title . section), where either part may be nil."
            (section (cdr title-and-section))
            (note-pk (if title
                         (car (rassoc (list title) (bear-list-notes)))
-                      (when section (bear--get-current-buffer-pk)))))
+                      (when section bear--note-pk))))
       (if note-pk
           (bear--open-or-reload-note note-pk section)
         (message "No note found for link %s" link)))))
@@ -191,9 +213,6 @@ Returns a cons cell (title . section), where either part may be nil."
   "A mode derived from markdown-mode with read-only buffers."
   (setq font-lock-defaults '(bear-mode-font-lock-keywords))
   (setq buffer-read-only t))
-
-;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.bearmd\\'" . bear-mode))
 
 (provide 'bear)
 ;;; bear.el ends here

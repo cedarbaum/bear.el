@@ -1,5 +1,7 @@
 # bear.el
 
-![](./icons/bear-el-logo-128-128.png)
+<p align="center">
+  <img src="./icons/bear-el-logo.png" width="256" />
+</p>
 
 Read notes from the Bear app in Emacs!

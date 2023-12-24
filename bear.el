@@ -40,7 +40,7 @@
 (defun bear-open-note ()
   "Prompt the user to select an option and return the corresponding ID."
   (interactive)
-  (let* ((notes (bear-list-notes))
+  (let* ((notes (bear--list-notes))
          (options (mapcar 'cdr notes)) ; Extract just the display text
          (selection (completing-read "Choose an option: " options nil t))
          (selected-id (car (rassoc (list selection) notes)))) ; Find the ID associated with the selection
@@ -116,7 +116,7 @@
 
 ;;; Bear SQL functions
 
-(defun bear-list-notes ()
+(defun bear--list-notes ()
   "Return a list of all notes in the database."
   (sqlite-select (bear--get-db) "SELECT Z_PK,ZTITLE FROM ZSFNOTE WHERE ZTRASHED=0 AND ZARCHIVED=0 AND ZENCRYPTED=0"))
 
@@ -215,7 +215,7 @@ Optional argument SECTION specifies a section to jump to."
            (title (car title-and-section))
            (section (cdr title-and-section))
            (note-pk (if title
-                        (car (rassoc (list title) (bear-list-notes)))
+                        (car (rassoc (list title) (bear--list-notes)))
                       (when section bear--note-pk))))
       (if note-pk
           (bear--open-or-reload-note note-pk section)

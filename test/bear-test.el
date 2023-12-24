@@ -26,9 +26,19 @@
 (ert-deftest bear-list-notes-test ()
   "Test listing notes."
   (bear--test-init)
-  (should (equal (bear-list-notes) '((6  "Note 1")
-                                     (7  "Note 2")
-                                     (8  "Note 3")))))
+  (should (equal (bear--list-notes) '((6  "Note 1")
+                                      (7  "Note 2")
+                                      (8  "Note 3")))))
+
+(ert-deftest bear-get-note-title-test ()
+  "Test getting note title."
+  (bear--test-init)
+  (should (equal (bear--get-note-title 6) "Note 1")))
+
+(ert-deftest bear-get-note-text-test ()
+  "Test getting note text."
+  (bear--test-init)
+  (should (equal (bear--get-note-text 6) "# Note 1\n\n* Some text\n* Some more text")))
 
 (provide 'bear-test)
 ;;; bear-test.el ends here

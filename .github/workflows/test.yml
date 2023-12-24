@@ -20,6 +20,7 @@ jobs:
       matrix:
         emacs-version:
           - 29.1
+          - snapshot
     steps:
       - uses: actions/checkout@v2
       - uses: purcell/setup-emacs@master

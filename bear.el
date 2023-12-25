@@ -67,7 +67,7 @@
       (if selected-note
           (let* ((selected-note-pk (car selected-note))
                  (selected-note-unique-id (nth 1 selected-note)))
-            (bear--open-note selected-note-pk nil selected-note-unique-id))
+            (bear--open-note selected-note-pk selected-note-unique-id))
         (message "Could not open selected note %s" selection)))))
 
 ;;;###autoload
@@ -233,14 +233,14 @@ Optional argument UNIQUE-ID specifies the unique ID of the note to display in th
         (forward-line 1))
       title)))
 
-(defun bear--get-backlink-target-note-pk (title)
+(defun bear--get-backlink-target-note (title)
   "Return the note-pk of the note with the given TITLE."
   (let* ((notes-with-title (cl-remove-if-not (lambda (note)
                                                (string= title (nth 2 note)))
                                              (bear--list-notes))))
     ;; If there's only one note with the given title, return it
     (if (= (length notes-with-title) 1)
-        (car (car notes-with-title))
+        (car notes-with-title)
       ;; Let user choose which note to link to if it's ambiguous
       (let* ((options (mapcar (lambda (note)
                                 (let* ((note-title (nth 2 note))
@@ -263,15 +263,15 @@ Optional argument UNIQUE-ID specifies the unique ID of the note to display in th
            (title-and-section (bear--parse-title-and-section link))
            (title (car title-and-section))
            (section (cdr title-and-section))
-           (target-note-pk (if title
-                               (bear--get-backlink-target-note-pk title)
-                             (when section
-                               bear--note-pk))))
-      (if target-note-pk
-          (if (not (eq target-note-pk bear--note-pk))
-              (bear--open-note target-note-pk nil section)
-            (bear--jump-to-section section))
-        (message "No note found for link %s" link)))))
+           (target-note (when title
+                          (bear--get-backlink-target-note title))))
+      (cond
+       (target-note
+        (bear--open-note (nth 0 target-note) (nth 1 target-note) section))
+       ((and bear--note-pk section)
+        (bear--jump-to-section section))
+       (t
+        (message "Link %s is not a valid backlink" link))))))
 
 (defun bear--fontify-clickable-backlinks (limit)
   "Search for clickable links up to LIMIT and make them clickable."

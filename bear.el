@@ -41,34 +41,8 @@
 (defun bear-open-note ()
   "Prompt the user to select a note and open it."
   (interactive)
-  (let* ((notes (bear--list-notes))
-         (titles (mapcar (lambda (note) (nth 2 note)) notes))
-         (title-counts (make-hash-table :test 'equal)))
-
-    ;; Count the occurrences of each title
-    (dolist (title titles)
-      (puthash title (1+ (gethash title title-counts 0)) title-counts))
-
-    ;; Prompt the user to choose a note
-    (let* ((options (mapcar (lambda (note)
-                              (let ((title (nth 2 note)))
-                                (if (> (gethash title title-counts) 1)
-                                    (let* ((note-unique-id (nth 1 note)))
-                                      (format "%s (%s)" title note-unique-id))
-                                  title)))
-                            notes))
-           (selection (completing-read "Choose a note: " options nil t))
-           (selected-note (cl-find-if (lambda (note)
-                                        (let ((title (nth 2 note))
-                                              (note-unique-id (nth 1 note)))
-                                          (or (string= title selection)
-                                              (string= (format "%s (%s)" title note-unique-id) selection))))
-                                      notes)))
-      (if selected-note
-          (let* ((selected-note-pk (car selected-note))
-                 (selected-note-unique-id (nth 1 selected-note)))
-            (bear--open-note selected-note-pk selected-note-unique-id))
-        (message "Could not open selected note %s" selection)))))
+  (let* ((notes (bear--list-notes)))
+    (bear--prompt-for-note-to-open notes)))
 
 ;;;###autoload
 (defun bear-pull-note()
@@ -145,6 +119,13 @@
   "Return a list of all notes in the database."
   (sqlite-select (bear--get-db) "SELECT Z_PK,ZUNIQUEIDENTIFIER,ZTITLE FROM ZSFNOTE WHERE ZTRASHED=0 AND ZARCHIVED=0 AND ZENCRYPTED=0"))
 
+(defun bear--list-notes-with-tag (tag)
+  "Return a list of all notes in the database containing the specified TAG."
+  (let* ((escaped-tag (replace-regexp-in-string "%" "%%" (regexp-quote tag))) ; Escape '%' for SQL
+         (query (format "SELECT Z_PK,ZUNIQUEIDENTIFIER,ZTITLE FROM ZSFNOTE WHERE ZTRASHED=0 AND ZARCHIVED=0 AND ZENCRYPTED=0 AND (ZTEXT LIKE '%%%s%%' OR ZTEXT LIKE '%%\\\\%s%%') AND ZTEXT NOT LIKE '%%\\%s%%'"
+                        escaped-tag escaped-tag escaped-tag)))
+    (sqlite-select (bear--get-db) query)))
+
 (defun bear--get-note-title (note-pk)
   "Get the title of the note with the given NOTE-PK."
   (let* ((note (sqlite-select (bear--get-db) (format "SELECT ZTITLE FROM ZSFNOTE WHERE Z_PK=%s" note-pk)))
@@ -184,6 +165,38 @@ Returns the note's primary key."
                     (list title text current-time note-pk))))
 
 ;;; Bear buffer functions
+
+(defun bear--prompt-for-note-to-open (notes &optional prompt)
+  "Prompt the user to select a note from the given NOTES.
+Optional argument PROMPT specifies the prompt to use."
+  (interactive)
+  (let* ((titles (mapcar (lambda (note) (nth 2 note)) notes))
+         (title-counts (make-hash-table :test 'equal)))
+
+    ;; Count the occurrences of each title
+    (dolist (title titles)
+      (puthash title (1+ (gethash title title-counts 0)) title-counts))
+
+    ;; Prompt the user to choose a note
+    (let* ((options (mapcar (lambda (note)
+                              (let ((title (nth 2 note)))
+                                (if (> (gethash title title-counts) 1)
+                                    (let* ((note-unique-id (nth 1 note)))
+                                      (format "%s (%s)" title note-unique-id))
+                                  title)))
+                            notes))
+           (selection (completing-read (or prompt "Choose a note: ") options nil t))
+           (selected-note (cl-find-if (lambda (note)
+                                        (let ((title (nth 2 note))
+                                              (note-unique-id (nth 1 note)))
+                                          (or (string= title selection)
+                                              (string= (format "%s (%s)" title note-unique-id) selection))))
+                                      notes)))
+      (if selected-note
+          (let* ((selected-note-pk (car selected-note))
+                 (selected-note-unique-id (nth 1 selected-note)))
+            (bear--open-note selected-note-pk selected-note-unique-id))
+        (message "Could not open selected note %s" selection)))))
 
 (defun bear--open-note (note-pk unique-id &optional section)
   "Open the note with the given NOTE-PK and UNIQUE-ID.
@@ -306,9 +319,31 @@ Optional argument SECTION specifies a section to jump to."
       (add-text-properties start end up)
       (add-face-text-property start end 'markdown-url-face))))
 
+(defun bear--fontify-clickable-tags (limit)
+  "Search for clickable tags up to LIMIT and make them clickable."
+  (while (re-search-forward "\\(?:^\\|[^\\]\\)\\(#\\w+\\)" limit t)
+    (let* ((start (match-beginning 1))
+           (end (match-end 1))
+           (click-func (lambda ()
+                         (interactive)
+                         (let* ((tag (buffer-substring-no-properties start end))
+                                (notes-with-tag (bear--list-notes-with-tag tag)))
+                           (bear--prompt-for-note-to-open notes-with-tag (format "Notes with tag %s: " tag)))))
+           (map (let ((map (make-sparse-keymap)))
+                  (define-key map [mouse-1] click-func)
+                  map))
+           ;; Properties for the hashtag part
+           (tag-props (list 'keymap map
+                            'mouse-face 'highlight
+                            'font-lock-multiline t)))
+      ;; Apply properties to the hashtag
+      (add-text-properties start end tag-props)
+      (add-face-text-property start end 'link))))
+
 (defvar bear-mode-font-lock-keywords
   (append markdown-mode-font-lock-keywords
-          '((bear--fontify-clickable-backlinks . nil))))
+          '((bear--fontify-clickable-backlinks . nil)
+            (bear--fontify-clickable-tags . nil))))
 
 ;;; Utility functions
 

@@ -26,9 +26,9 @@
 (ert-deftest bear-list-notes-test ()
   "Test listing notes."
   (bear--test-init)
-  (should (equal (bear--list-notes) '((6  "Note 1")
-                                      (7  "Note 2")
-                                      (8  "Note 3")))))
+  (should (equal (bear--list-notes) '((6 "304F86F1-E00E-4902-B1B1-284728C5448E" "Note 1")
+                                      (7 "44FBCD4C-700A-49A2-8206-87DAD30EBFA1" "Note 2")
+                                      (8 "8A243566-CC78-4DEB-8F6C-017CE116B20E" "Note 3")))))
 
 (ert-deftest bear-get-note-title-test ()
   "Test getting note title."

@@ -38,7 +38,7 @@
 ;;; Interactive functions
 
 ;;;###autoload
-(defun bear--open-note ()
+(defun bear-open-note ()
   "Prompt the user to select a note and open it."
   (interactive)
   (let* ((notes (bear--list-notes))

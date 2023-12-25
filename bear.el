@@ -164,7 +164,8 @@
     (not (null note))))
 
 (defun bear--create-note (title text unique-id)
-  "Create a new note with the given TITLE, TEXT, and UNIQUE-ID.  Return the note's primary key."
+  "Create a new note with the given TITLE, TEXT, and UNIQUE-ID.
+Returns the note's primary key."
   (bear--assert-can-write)
   (let* ((db (bear--get-db))
          (current-time (bear--core-data-timestamp)))

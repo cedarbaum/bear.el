@@ -49,17 +49,15 @@
     (dolist (title titles)
       (puthash title (1+ (gethash title title-counts 0)) title-counts))
 
-    ;; Prepare the selection options
-    (setq options (mapcar (lambda (note)
-                            (let ((title (nth 2 note)))
-                              (if (> (gethash title title-counts) 1)
-                                  (let* ((note-unique-id (nth 1 note)))
-                                    (format "%s (%s)" title note-unique-id))
-                                title)))
-                          notes))
-
     ;; Prompt the user to choose a note
-    (let* ((selection (completing-read "Choose a note: " options nil t))
+    (let* ((options (mapcar (lambda (note)
+                              (let ((title (nth 2 note)))
+                                (if (> (gethash title title-counts) 1)
+                                    (let* ((note-unique-id (nth 1 note)))
+                                      (format "%s (%s)" title note-unique-id))
+                                  title)))
+                            notes))
+           (selection (completing-read "Choose a note: " options nil t))
            (selected-note (cl-find-if (lambda (note)
                                         (let ((title (nth 2 note))
                                               (note-unique-id (nth 1 note)))

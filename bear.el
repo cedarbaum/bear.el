@@ -186,9 +186,8 @@ Returns the note's primary key."
 ;;; Bear buffer functions
 
 (defun bear--open-note (note-pk unique-id &optional section)
-  "Open the note with the given NOTE-PK.
-Optional argument SECTION specifies a section to jump to.
-Optional argument UNIQUE-ID specifies the unique ID of the note to display in the buffer."
+  "Open the note with the given NOTE-PK and UNIQUE-ID.
+Optional argument SECTION specifies a section to jump to."
   (let* ((title (bear--get-note-title note-pk))
          (text (bear--get-note-text note-pk))
          (buffer (get-buffer-create (bear--get-buffer-name title unique-id))))

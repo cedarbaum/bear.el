@@ -38,7 +38,7 @@
 ;;; Interactive functions
 
 ;;;###autoload
-(defun bear-open-note ()
+(defun bear--open-note ()
   "Prompt the user to select a note and open it."
   (interactive)
   (let* ((notes (bear--list-notes))
@@ -67,7 +67,7 @@
       (if selected-note
           (let* ((selected-note-pk (car selected-note))
                  (selected-note-unique-id (nth 1 selected-note)))
-            (bear--open-or-reload-note selected-note-pk nil selected-note-unique-id))
+            (bear--open-note selected-note-pk nil selected-note-unique-id))
         (message "Could not open selected note %s" selection)))))
 
 ;;;###autoload
@@ -185,7 +185,7 @@ Returns the note's primary key."
 
 ;;; Bear buffer functions
 
-(defun bear--open-or-reload-note (note-pk &optional section unique-id)
+(defun bear--open-note (note-pk unique-id &optional section)
   "Open the note with the given NOTE-PK.
 Optional argument SECTION specifies a section to jump to.
 Optional argument UNIQUE-ID specifies the unique ID of the note to display in the buffer."
@@ -205,16 +205,21 @@ Optional argument UNIQUE-ID specifies the unique ID of the note to display in th
           (when bear-format-function
             (funcall bear-format-function))))
 
+      ;; Switch to the buffer in the current window
+      (switch-to-buffer buffer)
+
       ;; Jump to the section if specified
       (when section
-        (goto-char (point-min))
-        (if (re-search-forward (format "^#+ %s$" section) nil t)
-            (beginning-of-line)
-          (message "Section %s not found in note %s" section title))))
+        (bear--jump-to-section section)))
 
-    ;; Switch to the buffer in the current window
-    (switch-to-buffer buffer)
     (setq bear--note-pk note-pk)))
+
+(defun bear--jump-to-section (section)
+  "Jump to the given SECTION in the current buffer."
+  (goto-char (point-min))
+  (if (re-search-forward (format "^#+ %s$" section) nil t)
+      (beginning-of-line)
+    (message "Section %s not found" section)))
 
 (defun bear--get-curent-note-title ()
   "Return the title of the current buffer."
@@ -228,6 +233,24 @@ Optional argument UNIQUE-ID specifies the unique ID of the note to display in th
         (forward-line 1))
       title)))
 
+(defun bear--get-backlink-target-note-pk (title)
+  "Return the note-pk of the note with the given TITLE."
+  (let* ((notes-with-title (cl-remove-if-not (lambda (note)
+                                               (string= title (nth 2 note)))
+                                             (bear--list-notes))))
+    ;; If there's only one note with the given title, return it
+    (if (= (length notes-with-title) 1)
+        (car (car notes-with-title))
+      ;; Let user choose which note to link to if it's ambiguous
+      (let* ((options (mapcar (lambda (note)
+                                (let* ((note-title (nth 2 note))
+                                       (note-unique-id (nth 1 note)))
+                                  (format "%s (%s)" note-title note-unique-id)))
+                              notes-with-title))
+             (selection (completing-read (format "Link could refer to multiple notes: " title) options nil t)))
+        (car (cl-find-if (lambda (note)
+                           (string= selection (format "%s (%s)" (nth 2 note) (nth 1 note))))
+                         notes-with-title))))))
 
 ;;; Fontification
 
@@ -240,11 +263,14 @@ Optional argument UNIQUE-ID specifies the unique ID of the note to display in th
            (title-and-section (bear--parse-title-and-section link))
            (title (car title-and-section))
            (section (cdr title-and-section))
-           (note-pk (if title
-                        (car (rassoc (list title) (bear--list-notes)))
-                      (when section bear--note-pk))))
-      (if note-pk
-          (bear--open-or-reload-note note-pk section)
+           (target-note-pk (if title
+                               (bear--get-backlink-target-note-pk title)
+                             (when section
+                               bear--note-pk))))
+      (if target-note-pk
+          (if (not (eq target-note-pk bear--note-pk))
+              (bear--open-note target-note-pk nil section)
+            (bear--jump-to-section section))
         (message "No note found for link %s" link)))))
 
 (defun bear--fontify-clickable-backlinks (limit)

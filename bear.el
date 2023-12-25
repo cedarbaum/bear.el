@@ -14,6 +14,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'markdown-mode)
 
 (defcustom bear-application-data-url "~/Library/Group Containers/9K33E3U3T4.net.shinyfrog.bear/Application Data/"
@@ -38,13 +39,40 @@
 
 ;;;###autoload
 (defun bear-open-note ()
-  "Prompt the user to select an option and return the corresponding ID."
+  "Prompt the user to select a note and open it."
   (interactive)
   (let* ((notes (bear--list-notes))
-         (options (mapcar 'cdr notes)) ; Extract just the display text
-         (selection (completing-read "Choose an option: " options nil t))
-         (selected-id (car (rassoc (list selection) notes)))) ; Find the ID associated with the selection
-    (bear--open-or-reload-note selected-id)))
+         (titles (mapcar (lambda (note) (nth 2 note)) notes))
+         (title-counts (make-hash-table :test 'equal))
+         (selected-unique-id-to-display nil))
+
+    ;; Count the occurrences of each title
+    (dolist (title titles)
+      (puthash title (1+ (gethash title title-counts 0)) title-counts))
+
+    ;; Prepare the selection options
+    (setq options (mapcar (lambda (note)
+                            (let ((title (nth 2 note)))
+                              (if (> (gethash title title-counts) 1)
+                                  (let* ((note-pk (car note))
+                                         (note-unique-id (nth 1 note)))
+                                    (format "%s (%s)" title note-unique-id))
+                                title)))
+                          notes))
+
+    ;; Prompt the user to choose a note
+    (let* ((selection (completing-read "Choose a note: " options nil t))
+           (selected-note (cl-find-if (lambda (note)
+                                        (let ((title (nth 2 note))
+                                              (note-unique-id (nth 1 note)))
+                                          (or (string= title selection)
+                                              (string= (format "%s (%s)" title note-unique-id) selection))))
+                                      notes)))
+      (if selected-note
+          (let* ((selected-note-pk (car selected-note))
+                 (selected-note-unique-id (nth 1 selected-note)))
+            (bear--open-or-reload-note selected-note-pk nil selected-note-unique-id))
+        (message "Could not open selected note %s" selection)))))
 
 ;;;###autoload
 (defun bear-pull-note()
@@ -79,7 +107,8 @@
   (interactive)
   (bear--assert-can-write)
   (let* ((title (read-string "Title: ")))
-    (let* ((buffer (get-buffer-create (format "*bear-note-%s*" title))))
+    (let* ((unique-id (bear--generate-guid))
+           (buffer (get-buffer-create (bear--get-buffer-name title unique-id))))
       (with-current-buffer buffer
         (bear-mode)
         (save-excursion
@@ -87,7 +116,7 @@
             (erase-buffer)
             (insert (format "# %s" title))))
 
-        (let* ((note-pk (bear--create-note title (buffer-string))))
+        (let* ((note-pk (bear--create-note title (buffer-string) unique-id)))
           (setq bear--note-pk note-pk)
           (message "Created note %s" title)))
 
@@ -118,7 +147,7 @@
 
 (defun bear--list-notes ()
   "Return a list of all notes in the database."
-  (sqlite-select (bear--get-db) "SELECT Z_PK,ZTITLE FROM ZSFNOTE WHERE ZTRASHED=0 AND ZARCHIVED=0 AND ZENCRYPTED=0"))
+  (sqlite-select (bear--get-db) "SELECT Z_PK,ZUNIQUEIDENTIFIER,ZTITLE FROM ZSFNOTE WHERE ZTRASHED=0 AND ZARCHIVED=0 AND ZENCRYPTED=0"))
 
 (defun bear--get-note-title (note-pk)
   "Get the title of the note with the given NOTE-PK."
@@ -138,12 +167,11 @@
   (let* ((note (sqlite-select (bear--get-db) (format "SELECT Z_PK FROM ZSFNOTE WHERE Z_PK=%s" note-pk))))
     (not (null note))))
 
-(defun bear--create-note (title text)
-  "Create a new note with the given TITLE and TEXT.  Return the note's primary key."
+(defun bear--create-note (title text unique-id)
+  "Create a new note with the given TITLE, TEXT, and UNIQUE-ID.  Return the note's primary key."
   (bear--assert-can-write)
   (let* ((db (bear--get-db))
-         (current-time (bear--core-data-timestamp))
-         (unique-id (bear--generate-guid)))
+         (current-time (bear--core-data-timestamp)))
     (sqlite-execute db
                     "INSERT INTO ZSFNOTE (ZTITLE, ZTEXT, ZARCHIVED, ZENCRYPTED, ZHASFILES, ZHASIMAGES, ZHASSOURCECODE, ZLOCKED, ZORDER, ZPERMANENTLYDELETED, ZPINNED, ZSHOWNINTODAYWIDGET, ZSKIPSYNC, ZTODOCOMPLETED, ZTODOINCOMPLETED, ZTRASHED, ZVERSION, ZUNIQUEIDENTIFIER, ZCREATIONDATE, ZMODIFICATIONDATE) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                     (list title text 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 unique-id current-time current-time))
@@ -160,12 +188,13 @@
 
 ;;; Bear buffer functions
 
-(defun bear--open-or-reload-note (note-pk &optional section)
+(defun bear--open-or-reload-note (note-pk &optional section unique-id)
   "Open the note with the given NOTE-PK.
-Optional argument SECTION specifies a section to jump to."
+Optional argument SECTION specifies a section to jump to.
+Optional argument UNIQUE-ID specifies the unique ID of the note to display in the buffer."
   (let* ((title (bear--get-note-title note-pk))
          (text (bear--get-note-text note-pk))
-         (buffer (get-buffer-create (format "*bear-note-%s*" title))))
+         (buffer (get-buffer-create (bear--get-buffer-name title unique-id))))
 
     (with-current-buffer buffer
       ;; Switch to bear-mode
@@ -290,6 +319,11 @@ Optional argument SECTION specifies a section to jump to."
           (random (expt 16 4)) (random (expt 16 4))
           (random (expt 16 12))))
 
+(defun bear--get-buffer-name (title &optional unique-id)
+  "Return the buffer name for a note with the given TITLE and optional UNIQUE-ID."
+  (if unique-id
+      (format "*bear-note-%s (%s)*" title unique-id)
+    (format "*bear-note-%s*" title)))
 
 (defun bear--parse-title-and-section (str)
   "Parse out the title and section from STR of format \\='title/section\\='.

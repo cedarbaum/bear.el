@@ -246,7 +246,7 @@ Optional argument SECTION specifies a section to jump to."
                                        (note-unique-id (nth 1 note)))
                                   (format "%s (%s)" note-title note-unique-id)))
                               notes-with-title))
-             (selection (completing-read (format "Link could refer to multiple notes: " title) options nil t)))
+             (selection (completing-read "Link could refer to multiple notes: " options nil t)))
         (car (cl-find-if (lambda (note)
                            (string= selection (format "%s (%s)" (nth 2 note) (nth 1 note))))
                          notes-with-title))))))

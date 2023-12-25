@@ -43,8 +43,7 @@
   (interactive)
   (let* ((notes (bear--list-notes))
          (titles (mapcar (lambda (note) (nth 2 note)) notes))
-         (title-counts (make-hash-table :test 'equal))
-         (selected-unique-id-to-display nil))
+         (title-counts (make-hash-table :test 'equal)))
 
     ;; Count the occurrences of each title
     (dolist (title titles)

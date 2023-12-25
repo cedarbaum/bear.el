@@ -6,7 +6,7 @@
 
 ## Introduction
 
-Bear.el allows you to browse and open notes you have written in Bear. It is built on top of `markdown-mode` while also providing some additional syntax highlighting for Bear's flavor of markdown (e.g., backlinks to other notes). There is some experiemental support for creating and updating note content, but this is turned off by default for safety (more details below).
+This package allows you to browse and open notes you have written in [Bear](https://bear.app/). It is built on top of `markdown-mode` while also providing some additional syntax highlighting for Bear's flavor of markdown (e.g., backlinks and tags). There is some experiemental support for creating and updating note content, but this is turned off by default for safety (more details [here](#creating-and-updating-notes)).
 
 ## Installation
 

@@ -12,6 +12,9 @@ This package allows you to browse and open notes you have written in [Bear](http
 
 This package is not currently on MELPA, but can be installed using package managers that support installation directly from GitHub repos.
 
+### Requirements
+- Emacs 29.1 or later (for SQLite support)
+
 ### Using `use-package` and [straight.el](https://github.com/radian-software/straight.el)
 
 ```elisp

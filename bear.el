@@ -219,12 +219,11 @@ Optional argument SECTION specifies a section to jump to."
 
       ;; Switch to the buffer in the current window
       (switch-to-buffer buffer)
+      (setq bear--note-pk note-pk)
 
       ;; Jump to the section if specified
       (when section
-        (bear--jump-to-section section)))
-
-    (setq bear--note-pk note-pk)))
+        (bear--jump-to-section section)))))
 
 (defun bear--jump-to-section (section)
   "Jump to the given SECTION in the current buffer."
